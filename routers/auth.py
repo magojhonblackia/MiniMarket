@@ -7,7 +7,7 @@ import string
 from datetime import datetime, timezone, timedelta
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 
@@ -111,6 +111,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 class RecoverRequest(BaseModel):
     email: str
+    phone: str  # Segundo factor — teléfono registrado (10 dígitos)
 
 
 class RecoverResponse(BaseModel):
@@ -119,24 +120,61 @@ class RecoverResponse(BaseModel):
     owner_name: str
 
 
+# Registro simple en memoria para rate-limiting (máx 5 intentos por IP cada 10 min)
+import time
+from collections import defaultdict
+_recover_attempts: dict = defaultdict(list)
+_RECOVER_MAX = 5
+_RECOVER_WINDOW = 600  # segundos
+
+
 @router.post("/recover", response_model=RecoverResponse)
-def recover_license(req: RecoverRequest, db: Session = Depends(get_db)):
+def recover_license(
+    req: RecoverRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
-    Recupera la clave de licencia a partir del correo registrado.
-    No requiere contraseña — la clave no es un secreto de acceso, es un identificador
-    que el usuario ya necesita tener a la mano para activar el software.
+    Recupera la clave de licencia.
+    Requiere TANTO el correo como el teléfono registrados (verificación doble).
+    Rate-limited: máx 5 intentos por IP cada 10 minutos.
     """
+
+    # ── Rate limiting por IP ──────────────────────────────────────────────────
+    client_ip = getattr(request, "client", None)
+    ip = client_ip.host if client_ip else "unknown"
+    now = time.time()
+    # Limpiar intentos expirados
+    _recover_attempts[ip] = [t for t in _recover_attempts[ip] if now - t < _RECOVER_WINDOW]
+    if len(_recover_attempts[ip]) >= _RECOVER_MAX:
+        raise HTTPException(
+            429,
+            "Demasiados intentos. Espera 10 minutos antes de intentar de nuevo."
+        )
+    _recover_attempts[ip].append(now)
+
+    # ── Validar formato del teléfono ──────────────────────────────────────────
+    phone_clean = req.phone.strip().replace(" ", "").replace("-", "")
+    if not phone_clean.isdigit() or len(phone_clean) != 10:
+        raise HTTPException(400, "El número de teléfono debe tener exactamente 10 dígitos.")
+
+    # ── Buscar cuenta con email Y teléfono ───────────────────────────────────
     tenant = db.query(Tenant).filter(
         Tenant.email == req.email.lower().strip(),
         Tenant.is_active == True,
     ).first()
 
+    # Mensaje genérico para no revelar si el email existe o no
+    _err = ("Los datos ingresados no coinciden con ninguna cuenta activa. "
+            "Verifica el correo y el teléfono con que te registraste.")
+
     if not tenant:
-        raise HTTPException(
-            404,
-            "No encontramos ninguna cuenta activa con ese correo electrónico. "
-            "Verifica que sea el mismo correo con que te registraste."
-        )
+        raise HTTPException(404, _err)
+
+    # Verificar que el teléfono coincida
+    stored_phone = (tenant.phone or "").strip().replace(" ", "").replace("-", "")
+    if stored_phone != phone_clean:
+        raise HTTPException(404, _err)
 
     return RecoverResponse(
         license_key=tenant.license_key,
