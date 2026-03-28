@@ -43,6 +43,7 @@ class RegisterRequest(BaseModel):
     owner_name: str
     email: str
     phone: str | None = None
+    city: str | None = None
     password: str
 
 
@@ -87,6 +88,7 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
         owner_name=req.owner_name.strip(),
         email=req.email.lower().strip(),
         phone=req.phone,
+        city=req.city,
         password_hash=_hash_password(req.password),
         license_key=_generate_license_key(),
         plan="trial",
@@ -104,6 +106,42 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
         plan=tenant.plan,
         trial_ends_at=tenant.trial_ends_at,
         message=f"¡Bienvenido! Tu período de prueba de {settings.TRIAL_DURATION_DAYS} días está activo.",
+    )
+
+
+class RecoverRequest(BaseModel):
+    email: str
+
+
+class RecoverResponse(BaseModel):
+    license_key: str
+    business_name: str
+    owner_name: str
+
+
+@router.post("/recover", response_model=RecoverResponse)
+def recover_license(req: RecoverRequest, db: Session = Depends(get_db)):
+    """
+    Recupera la clave de licencia a partir del correo registrado.
+    No requiere contraseña — la clave no es un secreto de acceso, es un identificador
+    que el usuario ya necesita tener a la mano para activar el software.
+    """
+    tenant = db.query(Tenant).filter(
+        Tenant.email == req.email.lower().strip(),
+        Tenant.is_active == True,
+    ).first()
+
+    if not tenant:
+        raise HTTPException(
+            404,
+            "No encontramos ninguna cuenta activa con ese correo electrónico. "
+            "Verifica que sea el mismo correo con que te registraste."
+        )
+
+    return RecoverResponse(
+        license_key=tenant.license_key,
+        business_name=tenant.business_name,
+        owner_name=tenant.owner_name,
     )
 
 

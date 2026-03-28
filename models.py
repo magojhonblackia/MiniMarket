@@ -17,6 +17,7 @@ class Tenant(Base):
     owner_name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     license_key: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
     plan: Mapped[str] = mapped_column(String(20), nullable=False, default="trial")
