@@ -15,7 +15,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="PYFIX License Server",
     description="Servidor de licencias para el sistema POS PYFIX",
-    version="1.0.0",
+    version="1.2.0",
     docs_url="/docs",
     redoc_url=None,
 )
@@ -37,7 +37,7 @@ app.include_router(admin.router)
 
 @app.get("/", tags=["health"])
 def health():
-    return {"status": "ok", "service": "PYFIX License Server", "version": "1.0.0"}
+    return {"status": "ok", "service": "PYFIX License Server", "version": "1.2.0", "endpoints": list(app.routes.__len__())}
 
 
 @app.get("/health", tags=["health"])
