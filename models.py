@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
-from sqlalchemy import String, Boolean, DateTime, Integer, ForeignKey, func
+from sqlalchemy import String, Boolean, DateTime, Integer, ForeignKey, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
@@ -66,3 +66,22 @@ class Activation(Base):
 
     def __repr__(self) -> str:
         return f"<Activation id={self.id} tenant_id={self.tenant_id} hardware_id={self.hardware_id}>"
+
+
+class SyncSnapshot(Base):
+    """Almacena el último backup de datos de cada licencia (POS → Nube)."""
+    __tablename__ = "sync_snapshots"
+
+    license_key: Mapped[str] = mapped_column(String(50), primary_key=True, index=True)
+    device_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)   # JSON completo
+    stats: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON resumen
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<SyncSnapshot license_key={self.license_key}>"
